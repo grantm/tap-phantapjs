@@ -76,7 +76,7 @@ PhantomJS (L<http://phantomjs.org/>) - scriptable, headless, WebKit
 
 =item *
 
-phantap.js (L<https://github.com/shoptime/phantom-testlib) - a Javascript
+phantap.js (L<https://github.com/shoptime/phantom-testlib>) - a Javascript
 library for TAP generation and scripted browser interactions
 
 =back
