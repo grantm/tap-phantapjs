@@ -9,5 +9,6 @@ MANIFEST.SKIP
 ^build-stamp$
 ^install-stamp$
 ^MakeMaker-\d
+README.md
 \.old$
 \.bak$
