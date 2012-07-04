@@ -1,0 +1,227 @@
+#!/usr/bin/perl
+
+use 5.010;
+use strict;
+use warnings;
+
+use Pod::Usage;
+use Getopt::Long  qw(GetOptions);
+use JSON          qw(decode_json);
+use File::Spec    qw();
+use File::HomeDir qw();
+
+$| = 1;  # Turn off buffering
+
+my(%opt);
+
+if(!GetOptions(\%opt, 'help|?', 'config|c=s')) {
+    pod2usage(-exitval => 1,  -verbose => 0);
+}
+
+pod2usage(-exitstatus => 0, -verbose => 2) if $opt{help};
+pod2usage(-exitval => 1,  -verbose => 0) if !@ARGV;
+
+my $config = load_config($opt{config});
+
+check_libs($config);
+
+run_test_script($config, $_) foreach @ARGV;
+
+exit 0;
+
+
+sub load_config {
+    my($conf_path) = @_;
+
+    my $config = {    # Set some sensible defaults
+        phantomjs => 'phantomjs',       # Picked up via $PATH
+        harness   => 'my-harness.js',   # Assume current directory
+    };
+    my $conf_name = '.phantap.json';    # Default filename
+
+    if(!$conf_path) {
+        if($ENV{PHANTAP_CONFIG}) {
+            $conf_path = $ENV{PHANTAP_CONFIG};
+        }
+        else {
+            $conf_path = File::Spec->catfile(File::HomeDir->my_home, $conf_name);
+        }
+    }
+    merge_config($config, $conf_path) if -r $conf_path;
+
+    my $project_conf = $conf_name;      # In current directory
+    merge_config($config, $project_conf) if -r $project_conf;
+
+    return $config;
+}
+
+
+sub merge_config {
+    my($config, $filename) = @_;
+
+    my $json = do {
+        local($/);
+        open my $fh, '<', $filename or die "open($filename): $!";
+        <$fh>;
+    };
+
+    my $temp = decode_json($json);
+    while(my($k, $v) = each %$temp) {
+        $config->{$k} = $v;
+    }
+
+    $config->{source} ||= [];
+    push @{ $config->{source} }, $filename;
+}
+
+
+sub check_libs {
+    my($config) = @_;
+
+    warn "File does not exist: $config->{harness}\n"
+        unless -e $config->{harness};
+
+    my($volume,$directories,$file) = File::Spec->splitpath($config->{harness});
+    foreach my $lib ('testlib.js', 'jquery.min.js') {
+        my $path = File::Spec->catpath($volume,$directories,$lib);
+        warn "File does not exist: $path\n" unless -e $path;
+    }
+}
+
+
+sub run_test_script {
+    my($config, $test_file) = @_;
+
+    system(
+        $config->{phantomjs},
+        $config->{harness},
+        $test_file
+    );
+}
+
+__END__
+
+=head1 NAME
+
+phantap - test harness for running JavaScript test scripts in phantomjs
+
+=head1 SYNOPSIS
+
+To run a collection of .js test files and summarise the results:
+
+  prove -e phantap *.js
+
+You can also directly run a single test file:
+
+  phantap test-script.js
+
+Options:
+
+   --config|-c <path>   path to config file
+   --help|-?            detailed help message
+
+=head1 DESCRIPTION
+
+This script is a wrapper for running test scripts written in Javascript using
+phantomjs and the PhanTAP test builder library.
+
+In order to run your Javascript test files, this script needs to know where
+to find the phantomjs binary and the phantap.js library files.  These details
+will then be used to prepare the environment and then load and run your script
+so that you can concentrate on writing tests.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<< --config <file> >> (alias -c)
+
+If this option is provided, the named config file will be loaded I<instead of>
+the default config file.  See also L<CONFIG>,
+
+=item B<< --help >> (alias: -?)
+
+Display this documentation.
+
+=back
+
+=head1 CONFIG
+
+You may wish to customise the behaviour of phantap, for example to:
+
+=over 4
+
+=item *
+
+run the tests with a version of phantomjs that is not in your $PATH
+
+=item *
+
+use an alternative test harness to load project-specific helper functions
+
+=back
+
+Both user-specific and project-specific config files can be used.  First, a
+base config will be loaded from one of the following locations, if the file
+exists.  The first matching file will be used:
+
+=over 4
+
+=item *
+
+file specified with C<--config> command-line option
+
+=item *
+
+file named in C<$PHANTAP_CONFIG> environment variable
+
+=item *
+
+file called '.phantap.json' in the user's home directory
+
+=back
+
+Phantap will also look for a project-specific config file in the current
+directory.  If it exists, the values in the project-specific file will be
+overlaid over the base config.
+
+Here's a sample config file:
+
+  {
+    "phantomjs": "/opt/phantomjs-1.6.0-linux-x86_64-dynamic/bin/phantomjs",
+    "harness":   "/home/phyllis/lib/my-harness.js"
+  }
+
+Recognised config options are:
+
+=over 4
+
+=item B<phantomjs>
+
+Full path to the F<phantomjs> binary.  If this key is missing, the program is
+assumed to be in your search path.
+
+=item B<harness>
+
+Full path to a Javascript test harness script responsible for loading the
+phantap test builder library, any additional helper functions, and finally the
+target test script itself.
+
+Note: The directory containing the harness script will be used as the C<libraryPath>
+for loading any other .js files, including the bundled F<jquery.min.js>.
+
+=back
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2012 Grant McLean C<< <grantm@cpan.org> >>
+
+This program is free software; you can redistribute it and/or modify it
+under the terms of either: the GNU General Public License as published
+by the Free Software Foundation; or the Artistic License.
+
+See http://dev.perl.org/licenses/ for more information.
+
+=cut
+
+
